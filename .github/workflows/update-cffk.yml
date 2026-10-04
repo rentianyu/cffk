@@ -25,18 +25,18 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Keep instance-specific Cloudflare bindings and deployment settings.
-          if [ -f wrangler.jsonc ]; then
-            cp wrangler.jsonc "$RUNNER_TEMP/wrangler.current.jsonc"
-          fi
+          # Keep instance-specific files: Cloudflare bindings (wrangler.jsonc)
+          # and the CI workflows under .github/.
+          mkdir -p "$RUNNER_TEMP/keep"
+          if [ -f wrangler.jsonc ]; then cp wrangler.jsonc "$RUNNER_TEMP/keep/wrangler.jsonc"; fi
+          if [ -d .github ]; then cp -r .github "$RUNNER_TEMP/keep/github"; fi
 
           git fetch https://github.com/34892002/cffk.git main
           git reset --hard FETCH_HEAD
           upstream_sha="$(git rev-parse --short HEAD)"
 
-          if [ -f "$RUNNER_TEMP/wrangler.current.jsonc" ]; then
-            cp "$RUNNER_TEMP/wrangler.current.jsonc" wrangler.jsonc
-          fi
+          if [ -f "$RUNNER_TEMP/keep/wrangler.jsonc" ]; then cp "$RUNNER_TEMP/keep/wrangler.jsonc" wrangler.jsonc; fi
+          if [ -d "$RUNNER_TEMP/keep/github" ]; then rm -rf .github; cp -r "$RUNNER_TEMP/keep/github" .github; fi
 
           git config user.name "CFFK Updater"
           git config user.email "actions@github.com"
@@ -49,3 +49,25 @@ jobs:
           fi
 
           git push --force-with-lease origin "HEAD:${GITHUB_REF_NAME}"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build
+        run: bun run build
+
+      - name: Deploy to Cloudflare
+        run: bun run deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
